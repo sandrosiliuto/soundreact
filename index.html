@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandro Siliuto · Estudio 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Rajdhani', sans-serif; }
+        canvas { display: block; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        
+        #intro-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #0a0a0a 0%, #000 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; transition: opacity 1s ease;
+        }
+
+        .btn-enter {
+            background: transparent; border: 2px solid #fff; color: #fff;
+            padding: 15px 45px; font-size: 1.2rem; font-weight: 700; cursor: pointer;
+            letter-spacing: 5px; transition: all 0.3s; text-transform: uppercase;
+        }
+        .btn-enter:hover { background: #fff; color: #000; box-shadow: 0 0 30px #fff; }
+
+        #nav-panel {
+            position: absolute; left: 20px; top: 20px; width: 280px;
+            background: rgba(5, 5, 5, 0.7); border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px); padding: 30px; border-radius: 4px;
+            color: white; z-index: 20; transform: translateX(-350px);
+            transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #nav-panel.open { transform: translateX(0); }
+
+        .nav-item {
+            display: block; width: 100%; text-align: left; background: transparent;
+            border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #888;
+            padding: 18px 0; font-size: 1.1rem; font-weight: 600; cursor: pointer;
+            transition: all 0.3s; text-transform: uppercase; letter-spacing: 3px;
+        }
+        .nav-item:hover, .nav-item.active { color: #fff; border-bottom-color: #fff; padding-left: 8px; }
+
+        #content-section {
+            position: absolute; right: 20px; top: 20px; bottom: 20px; width: 420px;
+            background: rgba(5, 5, 5, 0.9); border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px); padding: 40px; border-radius: 4px;
+            color: white; z-index: 20; 
+            transform: translateX(460px); transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex; flex-direction: column;
+        }
+        #content-section.open { transform: translateX(0); }
+        
+        #content-container {
+            flex-grow: 1; overflow-y: auto; overflow-x: hidden; padding-right: 10px;
+            display: flex; flex-direction: column;
+        }
+
+        /* Custom Scrollbar */
+        #content-container::-webkit-scrollbar { width: 4px; }
+        #content-container::-webkit-scrollbar-track { background: transparent; }
+        #content-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+
+        .close-btn {
+            position: absolute; top: 20px; right: 20px; cursor: pointer;
+            color: #666; transition: color 0.3s; z-index: 30;
+        }
+        .close-btn:hover { color: #fff; }
+
+        .project-card {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 20px; padding: 15px; border-radius: 4px; transition: transform 0.3s;
+        }
+        .project-card:hover { transform: translateY(-5px); border-color: rgba(255,255,255,0.2); }
+
+        #ui-hint {
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            color: rgba(255, 255, 255, 0.2); font-size: 0.65rem; text-transform: uppercase;
+            letter-spacing: 4px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="intro-overlay">
+        <div class="mb-10 text-center">
+            <h1 class="text-white text-6xl font-bold tracking-[0.4em] mb-3">SANDRO SILIUTO</h1>
+            <p class="text-gray-600 text-xs tracking-[0.6em] uppercase">Visual & Tech Explorer</p>
+        </div>
+        <button class="btn-enter" id="enterBtn">INICIAR EXPERIENCIA</button>
+        <p class="text-[10px] text-gray-500 mt-4 tracking-[0.3em]">REQUERIDA ACTIVACIÓN DE AUDIO</p>
+    </div>
+
+    <div id="nav-panel">
+        <div class="mb-10">
+            <h2 class="text-white font-bold text-xl tracking-widest mb-1">S. SILIUTO</h2>
+            <div class="w-10 h-[1px] bg-white opacity-30"></div>
+        </div>
+        <button class="nav-item" data-section="work">TRABAJOS</button>
+        <button class="nav-item" data-section="projects">PROYECTOS</button>
+        <button class="nav-item" data-section="info">INFO</button>
+        <button class="nav-item" data-section="contact">CONTACTO</button>
+    </div>
+
+    <div id="content-section">
+        <div class="close-btn" id="closeContent">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </div>
+        <div id="content-container"></div>
+    </div>
+
+    <div id="ui-hint">Gira el logo • Sound React Activo</div>
+
+    <script>
+        let scene, camera, renderer, logoMesh, particles;
+        let isRunning = false;
+        let mouseX = 0, mouseY = 0;
+        let targetRotationX = 0, targetRotationY = 0;
+        
+        // Variables para Web Audio API Real
+        let audioContext, analyser, dataArray, source, audio;
+
+        const contentData = {
+            work: {
+                title: "Trabajos Seleccionados",
+                subtitle: "Comercial & Editorial",
+                html: `
+                    <div class="space-y-6">
+                        <div class="project-card">
+                            <div class="text-[10px] text-gray-500 tracking-widest mb-1">01 / 3D DESIGN</div>
+                            <h3 class="text-lg font-bold mb-2">NEON DREAMS</h3>
+                            <p class="text-sm text-gray-400">Dirección de arte para campaña publicitaria de moda urbana.</p>
+                        </div>
+                        <div class="project-card">
+                            <div class="text-[10px] text-gray-500 tracking-widest mb-1">02 / MOTION</div>
+                            <h3 class="text-lg font-bold mb-2">FLUID DYNAMICS</h3>
+                            <p class="text-sm text-gray-400">Simulación de fluidos para marca de bebidas premium.</p>
+                        </div>
+                        <div class="project-card">
+                            <div class="text-[10px] text-gray-500 tracking-widest mb-1">03 / VR</div>
+                            <h3 class="text-lg font-bold mb-2">VIRTUAL ATELIER</h3>
+                            <p class="text-sm text-gray-400">Espacio inmersivo para galería de arte contemporáneo.</p>
+                        </div>
+                    </div>
+                `
+            },
+            projects: {
+                title: "Laboratorio Personal",
+                subtitle: "Experimentos & I+D",
+                html: `
+                    <p class="text-sm text-gray-400 mb-8 leading-relaxed">Exploraciones sobre la intersección entre el código generativo y la estética brutalista.</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="aspect-square bg-white/5 flex items-center justify-center border border-white/10 hover:border-white/40 cursor-pointer transition-all">EXP_01</div>
+                        <div class="aspect-square bg-white/5 flex items-center justify-center border border-white/10 hover:border-white/40 cursor-pointer transition-all">EXP_02</div>
+                        <div class="aspect-square bg-white/5 flex items-center justify-center border border-white/10 hover:border-white/40 cursor-pointer transition-all">EXP_03</div>
+                        <div class="aspect-square bg-white/5 flex items-center justify-center border border-white/10 hover:border-white/40 cursor-pointer transition-all">EXP_04</div>
+                    </div>
+                `
+            },
+            info: {
+                title: "Sobre el Estudio",
+                subtitle: "Bio & Visión",
+                html: `
+                    <div class="space-y-6 text-sm text-gray-300 leading-relaxed">
+                        <p>Sandro Siliuto es un artista digital y diseñador 3D enfocado en crear experiencias visuales que desafían la percepción.</p>
+                        <p>Con base en la experimentación constante, mi trabajo busca el equilibrio entre la frialdad técnica y la emoción orgánica.</p>
+                        <div class="pt-6 border-t border-white/10">
+                            <h4 class="text-white font-bold mb-4 uppercase tracking-widest">Stack Tecnológico</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[10px]">HOUDINI</span>
+                                <span class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[10px]">THREE.JS</span>
+                                <span class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[10px]">BLENDER</span>
+                                <span class="px-3 py-1 bg-white/5 border border-white/10 rounded text-[10px]">WEBGL</span>
+                            </div>
+                        </div>
+                    </div>
+                `
+            },
+            contact: {
+                title: "Conectemos",
+                subtitle: "Nuevas Oportunidades",
+                html: `
+                    <div class="flex flex-col h-full flex-grow">
+                        <p class="text-sm text-gray-400 leading-relaxed mb-6">¿Tienes un proyecto en mente o simplemente quieres saludar? Estoy disponible para nuevas colaboraciones.</p>
+                        
+                        <div class="space-y-4">
+                            <a href="https://wa.me/34618514254" target="_blank" class="block group">
+                                <div class="p-4 border border-white/10 bg-white/5 group-hover:bg-white group-hover:text-black transition-all duration-300 flex justify-between items-center">
+                                    <div>
+                                        <span class="block text-[10px] uppercase tracking-widest opacity-50 mb-1">WhatsApp</span>
+                                        <span class="text-base font-bold">618 51 42 54</span>
+                                    </div>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+                                </div>
+                            </a>
+
+                            <a href="mailto:ssiliutodesign@gmail.com" class="block group">
+                                <div class="p-4 border border-white/10 bg-white/5 group-hover:bg-white group-hover:text-black transition-all duration-300 flex justify-between items-center">
+                                    <div>
+                                        <span class="block text-[10px] uppercase tracking-widest opacity-50 mb-1">Email Oficial</span>
+                                        <span class="text-base font-bold">ssiliutodesign@gmail.com</span>
+                                    </div>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+                                </div>
+                            </a>
+                        </div>
+
+                        <div class="pt-4 text-center">
+                            <p class="text-[9px] text-gray-600 uppercase tracking-[0.4em]">Respuesta estimada: < 24h</p>
+                        </div>
+
+                        <!-- Botón Enviar Transmisión empujado hasta el fondo -->
+                        <div class="mt-auto pt-8 pb-4">
+                            <a href="https://wa.me/34618514254?text=Hola%20Sandro,%20vi%20tu%20web%20y%20me%20gustaría%20hablar%20sobre..." target="_blank" class="block w-full">
+                                <button class="w-full py-4 bg-transparent text-white border border-white/30 text-[11px] font-bold uppercase tracking-[0.4em] hover:bg-white hover:text-black hover:border-white transition-all duration-300 rounded-sm">
+                                    ENVIAR TRANSMISIÓN
+                                </button>
+                            </a>
+                        </div>
+                    </div>
+                `
+            }
+        };
+
+        // --- SISTEMA DE AUDIO REAL (Web Audio API) ---
+        async function setupAudio() {
+            if (audioContext) return; // Evitar inicialización doble
+
+            try {
+                // Usamos raw.githubusercontent.com para que devuelva el archivo MP3 puro
+                const audioUrl = "https://raw.githubusercontent.com/sandrosiliuto/soundreact/main/LateSolomun.mp3";
+                
+                audio = new Audio();
+                audio.crossOrigin = "anonymous"; // Vital para leer datos de otro dominio (GitHub)
+                audio.src = audioUrl;
+                audio.loop = true;
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256; // Nos da 128 frecuencias analizables
+
+                source = audioContext.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioContext.destination);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                await audio.play();
+                console.log("Audio iniciado correctamente");
+            } catch (err) {
+                console.error("Error al iniciar audio: ", err);
+            }
+        }
+
+        // --- THREE.JS SETUP ---
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+            camera.position.z = 600;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            const light1 = new THREE.PointLight(0xffffff, 3, 1000);
+            light1.position.set(200, 200, 400);
+            scene.add(light1);
+
+            createCustomLogo();
+            createSpaceBackground();
+
+            document.addEventListener('mousemove', (e) => {
+                mouseX = (e.clientX - window.innerWidth / 2) / 600;
+                mouseY = (e.clientY - window.innerHeight / 2) / 600;
+            });
+
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                btn.onclick = () => showSection(btn.getAttribute('data-section'));
+            });
+
+            document.getElementById('closeContent').onclick = () => {
+                document.getElementById('content-section').classList.remove('open');
+                document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            };
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createCustomLogo() {
+            const shape = new THREE.Shape();
+            shape.moveTo(40, 80); shape.lineTo(-40, 80); shape.lineTo(-60, 60);
+            shape.lineTo(-60, 10); shape.lineTo(20, 10); shape.lineTo(40, -10);
+            shape.lineTo(40, -60); shape.lineTo(20, -80); shape.lineTo(-40, -80);
+            shape.lineTo(-60, -60); shape.lineTo(-30, -60); shape.lineTo(-20, -50);
+            shape.lineTo(10, -50); shape.lineTo(15, -40); shape.lineTo(15, -20);
+            shape.lineTo(-40, -20); shape.lineTo(-60, 0); shape.lineTo(-60, 60);
+            shape.lineTo(-40, 80); shape.lineTo(40, 80); shape.lineTo(60, 60);
+            shape.lineTo(60, 40); shape.lineTo(30, 40); shape.lineTo(20, 50);
+            shape.lineTo(-10, 50); shape.lineTo(-15, 40); shape.lineTo(-15, 20);
+            shape.lineTo(40, 20); shape.lineTo(60, 0); shape.lineTo(60, -60);
+            shape.lineTo(40, -80);
+
+            const extrudeSettings = {
+                depth: 35, bevelEnabled: true, bevelThickness: 5, bevelSize: 3, bevelSegments: 4
+            };
+
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geometry.center();
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x080808, metalness: 1, roughness: 0.1,
+                emissive: 0x000000, emissiveIntensity: 1
+            });
+
+            logoMesh = new THREE.Mesh(geometry, material);
+            scene.add(logoMesh);
+
+            const edges = new THREE.EdgesGeometry(geometry);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 });
+            logoMesh.add(new THREE.LineSegments(edges, lineMat));
+        }
+
+        function createSpaceBackground() {
+            const geo = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < 3000; i++) {
+                vertices.push((Math.random()-0.5)*2500,(Math.random()-0.5)*2500,(Math.random()-0.5)*2500);
+            }
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.4 });
+            particles = new THREE.Points(geo, mat);
+            scene.add(particles);
+        }
+
+        function showSection(key) {
+            const data = contentData[key];
+            const container = document.getElementById('content-container');
+            const panel = document.getElementById('content-section');
+            
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            document.querySelector(`[data-section="${key}"]`).classList.add('active');
+
+            container.innerHTML = `
+                <div class="mb-10">
+                    <span class="text-[10px] text-gray-500 tracking-[0.4em] uppercase mb-1 block">${data.subtitle}</span>
+                    <h2 class="text-3xl font-bold tracking-tight text-white uppercase">${data.title}</h2>
+                    <div class="w-12 h-[2px] bg-white mt-4"></div>
+                </div>
+                ${data.html}
+            `;
+            panel.classList.add('open');
+        }
+
+        function animate() {
+            if (!isRunning) return;
+            requestAnimationFrame(animate);
+
+            let volume = 0;
+
+            // Leer datos del analizador de audio real
+            if (analyser && dataArray) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                
+                // Promediamos las frecuencias bajas (los primeros 12 de 128 valores)
+                // Esto hace que el logo palpite fuertemente con los bombos y bajos del track
+                const bassFrequencies = 12;
+                for(let i = 0; i < bassFrequencies; i++) {
+                    sum += dataArray[i];
+                }
+                
+                // Normalizar entre 0 y 1
+                volume = (sum / bassFrequencies) / 255; 
+            }
+
+            targetRotationY += (mouseX - targetRotationY) * 0.06;
+            targetRotationX += (mouseY - targetRotationX) * 0.06;
+
+            logoMesh.rotation.y = targetRotationY + Math.sin(Date.now() * 0.0006) * 0.08;
+            logoMesh.rotation.x = targetRotationX;
+
+            // Aplicar volumen al tamaño (escala)
+            // Cuando volume es 1 (máximo bajo), el logo crece un 110% extra
+            const s = 1.0 + (volume * 1.1); 
+            logoMesh.scale.set(s, s, s);
+            
+            // Aplicar volumen a la luz (emissive)
+            const intensity = volume * 2.5;
+            logoMesh.material.emissive.setRGB(intensity, intensity, intensity);
+
+            // Las estrellas giran un poco más rápido con la música
+            particles.rotation.y += 0.0003 + (volume * 0.015);
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Evento principal: Iniciamos el contexto de audio y la animación
+        document.getElementById('enterBtn').onclick = async () => {
+            document.getElementById('enterBtn').innerText = "CARGANDO FRECUENCIAS...";
+            
+            await setupAudio(); // Esperamos a que el audio empiece
+            
+            document.getElementById('intro-overlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('intro-overlay').style.display = 'none';
+                document.getElementById('nav-panel').classList.add('open');
+            }, 800);
+            
+            isRunning = true;
+            animate();
+        };
+
+        window.onload = init;
+    </script>
+</body>
+</html>
